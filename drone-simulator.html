@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>无人机学飞练习模拟器</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0e14;
+    font-family: "Microsoft YaHei", "PingFang SC", sans-serif; touch-action: none;
+    -webkit-user-select: none; user-select: none; }
+  #scene { position: absolute; inset: 0; }
+
+  /* ---------- 设置面板 ---------- */
+  #panel { position: absolute; top: 12px; left: 12px; width: 250px; z-index: 10;
+    background: rgba(15, 22, 33, 0.86); border: 1px solid rgba(120, 180, 255, 0.25);
+    border-radius: 12px; color: #dce6f2; backdrop-filter: blur(6px);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.4); }
+  #panelHead { display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px; cursor: pointer; font-size: 14px; font-weight: bold; color: #7fd0ff; }
+  #panelBody { padding: 0 14px 14px; }
+  #panel.collapsed #panelBody { display: none; }
+  .row { margin-top: 10px; font-size: 12px; }
+  .row label { display: flex; justify-content: space-between; margin-bottom: 4px; color: #9fb3c8; }
+  .row label b { color: #ffd479; font-weight: normal; }
+  input[type=range] { width: 100%; accent-color: #4da3ff; }
+  .seg { display: flex; border: 1px solid rgba(120,180,255,0.35); border-radius: 8px; overflow: hidden; }
+  .seg button { flex: 1; padding: 7px 0; background: transparent; border: none; color: #9fb3c8;
+    font-size: 12px; cursor: pointer; font-family: inherit; }
+  .seg button.on { background: #2f6fb5; color: #fff; }
+  .toggleRow { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; font-size: 12px; color: #9fb3c8; }
+  .switch { position: relative; width: 40px; height: 22px; background: #37424f; border-radius: 11px;
+    cursor: pointer; transition: background .2s; }
+  .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px;
+    background: #cfd8e3; border-radius: 50%; transition: left .2s; }
+  .switch.on { background: #3aa15c; }
+  .switch.on::after { left: 20px; }
+  #resetBtn { width: 100%; margin-top: 14px; padding: 8px 0; border: none; border-radius: 8px;
+    background: #b5482f; color: #fff; font-size: 13px; cursor: pointer; font-family: inherit; }
+  #resetBtn:hover { background: #d05436; }
+  .hint { margin-top: 10px; font-size: 11px; line-height: 1.6; color: #6d7f92; }
+
+  /* ---------- HUD ---------- */
+  #hud { position: absolute; top: 12px; right: 12px; z-index: 10; width: 168px;
+    background: rgba(15, 22, 33, 0.86); border: 1px solid rgba(120, 180, 255, 0.25);
+    border-radius: 12px; padding: 12px 14px; color: #dce6f2; font-size: 12px;
+    backdrop-filter: blur(6px); }
+  #hud .h-row { display: flex; justify-content: space-between; margin-bottom: 6px; color: #9fb3c8; }
+  #hud .h-row span:last-child { color: #eaf4ff; font-variant-numeric: tabular-nums; }
+  #windVane { display: flex; align-items: center; gap: 10px; margin-top: 8px; padding-top: 8px;
+    border-top: 1px solid rgba(120,180,255,0.15); }
+  #windArrowBox { width: 44px; height: 44px; border-radius: 50%; border: 1px solid rgba(120,180,255,0.3);
+    display: flex; align-items: center; justify-content: center; position: relative; }
+  #windArrowBox .n { position: absolute; top: 1px; left: 50%; transform: translateX(-50%);
+    font-size: 8px; color: #6d7f92; }
+  #windArrow { font-size: 20px; color: #7fd0ff; transition: transform .15s linear; }
+  #windText { flex: 1; line-height: 1.5; color: #9fb3c8; }
+  #windText b { color: #7fd0ff; font-weight: normal; }
+  #gamepadState { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(120,180,255,0.15);
+    color: #6d7f92; font-size: 11px; }
+  #gamepadState.on { color: #6fdc8c; }
+
+  /* ---------- 虚拟摇杆 ---------- */
+  .stick { position: absolute; bottom: 36px; width: 150px; height: 150px; z-index: 10;
+    border-radius: 50%; background: rgba(20, 30, 45, 0.45);
+    border: 2px solid rgba(120, 180, 255, 0.35); }
+  #stickL { left: 40px; }
+  #stickR { right: 40px; }
+  .stick .cross { position: absolute; inset: 0; border-radius: 50%; pointer-events: none; }
+  .stick .cross::before, .stick .cross::after { content: ""; position: absolute; background: rgba(120,180,255,0.18); }
+  .stick .cross::before { left: 50%; top: 8%; bottom: 8%; width: 1px; }
+  .stick .cross::after  { top: 50%; left: 8%; right: 8%; height: 1px; }
+  .knob { position: absolute; left: 50%; top: 50%; width: 58px; height: 58px; margin: -29px 0 0 -29px;
+    border-radius: 50%; background: radial-gradient(circle at 35% 30%, #7fb8ef, #2c5f96 70%);
+    border: 2px solid rgba(200, 230, 255, 0.6); box-shadow: 0 3px 10px rgba(0,0,0,0.5);
+    pointer-events: none; }
+  .stickTag { position: absolute; bottom: -22px; width: 100%; text-align: center;
+    font-size: 11px; color: #6d7f92; pointer-events: none; }
+
+  /* ---------- 提示横幅 ---------- */
+  #banner { position: absolute; top: 18%; left: 50%; transform: translateX(-50%); z-index: 20;
+    padding: 12px 28px; border-radius: 10px; background: rgba(180, 50, 40, 0.9); color: #fff;
+    font-size: 18px; display: none; }
+  #toast { position: absolute; bottom: 220px; left: 50%; transform: translateX(-50%); z-index: 20;
+    padding: 8px 20px; border-radius: 8px; background: rgba(15,22,33,0.85); color: #ffd479;
+    font-size: 13px; opacity: 0; transition: opacity .4s; pointer-events: none; }
+
+  @media (max-width: 720px) {
+    #panel { width: 210px; }
+    #hud { width: 148px; }
+    .stick { width: 120px; height: 120px; bottom: 24px; }
+    #stickL { left: 20px; } #stickR { right: 20px; }
+    .knob { width: 48px; height: 48px; margin: -24px 0 0 -24px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+
+<div id="panel">
+  <div id="panelHead"><span>⚙ 飞行设置</span><span id="panelFold">▾</span></div>
+  <div id="panelBody">
+    <div class="row">
+      <label>操控模式</label>
+      <div class="seg" id="modeSeg">
+        <button data-mode="2" class="on">美国手 Mode 2</button>
+        <button data-mode="1">日本手 Mode 1</button>
+      </div>
+    </div>
+    <div class="row">
+      <label><span>风速</span><b id="windSpdVal">3.0 m/s</b></label>
+      <input type="range" id="windSpd" min="0" max="15" step="0.5" value="3">
+    </div>
+    <div class="row">
+      <label><span>风向（风来自）</span><b id="windDirVal">北 0°</b></label>
+      <input type="range" id="windDir" min="0" max="359" step="1" value="0">
+    </div>
+    <div class="toggleRow">
+      <span>🍃 模拟真实自然风（阵风/乱流）</span>
+      <div class="switch" id="natSwitch"></div>
+    </div>
+    <button id="resetBtn">↺ 重置无人机 (R)</button>
+    <div class="hint">
+      油门杆中位=定高悬停，上推爬升下拉下降。<br>
+      支持双摇杆游戏手柄（自动识别），也可用鼠标/触摸拖动屏幕虚拟摇杆。
+    </div>
+  </div>
+</div>
+
+<div id="hud">
+  <div class="h-row"><span>高度</span><span id="hAlt">0.0 m</span></div>
+  <div class="h-row"><span>水平速度</span><span id="hSpd">0.0 m/s</span></div>
+  <div class="h-row"><span>垂直速度</span><span id="hVs">0.0 m/s</span></div>
+  <div class="h-row"><span>航向</span><span id="hHdg">0°</span></div>
+  <div id="windVane">
+    <div id="windArrowBox"><span class="n">N</span><span id="windArrow">➤</span></div>
+    <div id="windText">当前风<br><b id="hWind">0.0 m/s</b></div>
+  </div>
+  <div id="gamepadState">🎮 手柄未连接</div>
+</div>
+
+<div class="stick" id="stickL"><div class="cross"></div><div class="knob" id="knobL"></div><div class="stickTag" id="tagL"></div></div>
+<div class="stick" id="stickR"><div class="cross"></div><div class="knob" id="knobR"></div><div class="stickTag" id="tagR"></div></div>
+
+<div id="banner">💥 坠机了！点击「重置无人机」或按 R 重新开始</div>
+<div id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+"use strict";
+/* =========================================================
+ * 无人机学飞练习模拟器
+ * - Three.js 3D 第三人称跟随视角
+ * - 姿态模式物理：油门定高、摇杆控制倾角/偏航
+ * - 风场：恒定风 + 自然风（阵风、风向摆动、乱流）
+ * - 输入：Gamepad API 双摇杆手柄 / 屏幕虚拟双摇杆
+ * - 美国手 Mode 2 / 日本手 Mode 1 切换
+ * ========================================================= */
+
+/* ---------------- 全局配置 ---------------- */
+const CFG = {
+  gravity: 9.8,
+  maxTiltDeg: 25,        // 最大倾角
+  tiltLag: 6,            // 姿态响应速度
+  maxYawRate: 130,       // 偏航角速度 °/s
+  maxClimb: 4,           // 最大爬升率 m/s
+  maxDescend: 3.5,       // 最大下降率 m/s
+  vertLag: 3.2,          // 垂直速度响应
+  dragC: 0.38,           // 水平空气阻力系数（相对空气速度）
+  windDragC: 0.22,       // 风对机体的拖拽系数
+  crashVspeed: 3.2,      // 触地垂直速度超过此值判定坠机
+  crashHspeed: 5.5,      // 触地水平速度超过此值判定坠机
+  droneRestY: 0.16,      // 落地时机体中心高度
+  camDist: 7.5, camHeight: 3.2, camLag: 3.5,
+};
+
+/* ---------------- 状态 ---------------- */
+const state = {
+  mode: 2,               // 2=美国手 1=日本手
+  natural: false,        // 自然风模式
+  windSpeed: 3, windDirDeg: 0,   // 设定值（风来自的方向，0=北）
+  curWind: new THREE.Vector3(),  // 当前实际风矢量（含阵风）
+  curWindSpd: 0, curWindFromDeg: 0,
+  pos: new THREE.Vector3(0, CFG.droneRestY, 0),
+  vel: new THREE.Vector3(),
+  yaw: 0, tiltX: 0, tiltZ: 0,    // tiltX=俯仰(前+) tiltZ=横滚(右+)
+  landed: true, crashed: false,
+  rotorSpin: 0,
+  input: { throttle: 0, yaw: 0, pitch: 0, roll: 0 }, // 归一化 -1..1
+};
+
+/* ---------------- Three.js 场景 ---------------- */
+const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById("scene"), antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87b8de);
+scene.fog = new THREE.Fog(0x87b8de, 90, 260);
+
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 500);
+camera.position.set(0, 4, 10);
+
+scene.add(new THREE.HemisphereLight(0xcfe8ff, 0x3f5a36, 0.9));
+const sun = new THREE.DirectionalLight(0xfff2d8, 1.15);
+sun.position.set(40, 60, 25);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -60; sun.shadow.camera.right = 60;
+sun.shadow.camera.top = 60; sun.shadow.camera.bottom = -60;
+sun.shadow.camera.far = 200;
+scene.add(sun);
+
+/* 地面 */
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(500, 500),
+  new THREE.MeshLambertMaterial({ color: 0x5e8c4f })
+);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+const grid = new THREE.GridHelper(500, 100, 0x466e3c, 0x517f45);
+grid.position.y = 0.01;
+scene.add(grid);
+
+/* 起降坪 */
+(function buildPad() {
+  const pad = new THREE.Mesh(new THREE.CircleGeometry(2.2, 40),
+    new THREE.MeshLambertMaterial({ color: 0x2e3b4a }));
+  pad.rotation.x = -Math.PI / 2; pad.position.y = 0.02; pad.receiveShadow = true;
+  scene.add(pad);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(1.9, 2.2, 40),
+    new THREE.MeshBasicMaterial({ color: 0xffd479 }));
+  ring.rotation.x = -Math.PI / 2; ring.position.y = 0.03;
+  scene.add(ring);
+  // "H" 标记
+  const hMat = new THREE.MeshBasicMaterial({ color: 0xffd479 });
+  const b1 = new THREE.Mesh(new THREE.PlaneGeometry(0.28, 1.5), hMat);
+  const b2 = b1.clone(); const b3 = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.26), hMat);
+  b1.position.set(-0.5, 0.03, 0); b2.position.set(0.5, 0.03, 0); b3.position.set(0, 0.03, 0);
+  [b1, b2, b3].forEach(m => { m.rotation.x = -Math.PI / 2; scene.add(m); });
+})();
+
+/* 树木 & 参照物 */
+(function buildTrees() {
+  const trunkG = new THREE.CylinderGeometry(0.22, 0.3, 2.2, 6);
+  const trunkM = new THREE.MeshLambertMaterial({ color: 0x6e4a2a });
+  const leafG = new THREE.ConeGeometry(1.5, 3.4, 8);
+  const leafM = new THREE.MeshLambertMaterial({ color: 0x3f7534 });
+  const rnd = mulberry(20260728);
+  for (let i = 0; i < 46; i++) {
+    const a = rnd() * Math.PI * 2, r = 16 + rnd() * 110;
+    const x = Math.cos(a) * r, z = Math.sin(a) * r, s = 0.7 + rnd() * 1.2;
+    const t = new THREE.Mesh(trunkG, trunkM);
+    t.position.set(x, 1.1 * s, z); t.scale.setScalar(s); t.castShadow = true;
+    const l = new THREE.Mesh(leafG, leafM);
+    l.position.set(x, (2.2 + 1.4) * s, z); l.scale.setScalar(s); l.castShadow = true;
+    scene.add(t, l);
+  }
+  // 几栋箱体建筑
+  const bM = new THREE.MeshLambertMaterial({ color: 0x8d99a8 });
+  [[30, 12, -25, 8], [-38, 9, 20, 6], [15, 15, 48, 10], [-25, 7, -45, 5]].forEach(([x, h, z, w]) => {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), bM);
+    b.position.set(x, h / 2, z); b.castShadow = true; b.receiveShadow = true;
+    scene.add(b);
+  });
+})();
+
+/* 练习穿越环 */
+const rings = [];
+(function buildRings() {
+  const g = new THREE.TorusGeometry(2.4, 0.16, 10, 40);
+  [[12, 5, -14, 0.4], [-16, 8, -22, -0.6], [0, 11, -40, 0], [24, 6, 10, 1.2], [-10, 4, 18, 2.4]]
+    .forEach(([x, y, z, ry]) => {
+      const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: 0xff9b3d, emissive: 0x552b00 }));
+      m.position.set(x, y, z); m.rotation.y = ry; m.castShadow = true;
+      scene.add(m); rings.push(m);
+    });
+})();
+
+/* 风向旗（观察风向的参照物） */
+const flags = [];
+(function buildFlags() {
+  const poleG = new THREE.CylinderGeometry(0.06, 0.06, 6, 6);
+  const poleM = new THREE.MeshLambertMaterial({ color: 0xcfd8e3 });
+  const flagG = new THREE.PlaneGeometry(1.6, 0.9);
+  [[6, 6], [-8, -10], [18, -30], [-30, 8]].forEach(([x, z]) => {
+    const pole = new THREE.Mesh(poleG, poleM);
+    pole.position.set(x, 3, z); pole.castShadow = true; scene.add(pole);
+    const pivot = new THREE.Group(); pivot.position.set(x, 5.4, z); scene.add(pivot);
+    const f = new THREE.Mesh(flagG, new THREE.MeshLambertMaterial({ color: 0xe2543e, side: THREE.DoubleSide }));
+    f.position.x = 0.85; pivot.add(f);
+    flags.push(pivot);
+  });
+})();
+
+/* ---------------- 无人机模型 ---------------- */
+const drone = new THREE.Group();
+const rotors = [];
+(function buildDrone() {
+  const bodyM = new THREE.MeshLambertMaterial({ color: 0x2b3542 });
+  const accentM = new THREE.MeshLambertMaterial({ color: 0xe2543e });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.16, 0.7), bodyM);
+  body.castShadow = true; drone.add(body);
+  const nose = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.1, 0.18), accentM);
+  nose.position.set(0, 0.02, -0.42); nose.castShadow = true; drone.add(nose); // 机头(红) 朝 -Z
+  const armG = new THREE.BoxGeometry(0.08, 0.05, 0.62);
+  const motorG = new THREE.CylinderGeometry(0.07, 0.09, 0.09, 10);
+  const propG = new THREE.BoxGeometry(0.5, 0.015, 0.06);
+  const propM = new THREE.MeshLambertMaterial({ color: 0x9fb3c8, transparent: true, opacity: 0.85 });
+  const offs = [[-0.42, -0.42], [0.42, -0.42], [-0.42, 0.42], [0.42, 0.42]];
+  offs.forEach(([x, z], i) => {
+    const arm = new THREE.Mesh(armG, bodyM);
+    arm.position.set(x / 2, 0, z / 2);
+    arm.rotation.y = Math.atan2(x, z);
+    arm.scale.z = Math.hypot(x, z) / 0.62 * 2;
+    arm.castShadow = true; drone.add(arm);
+    const motor = new THREE.Mesh(motorG, i < 2 ? accentM : bodyM);
+    motor.position.set(x, 0.07, z); motor.castShadow = true; drone.add(motor);
+    const prop = new THREE.Mesh(propG, propM);
+    prop.position.set(x, 0.13, z); drone.add(prop);
+    rotors.push(prop);
+  });
+  const legG = new THREE.BoxGeometry(0.05, 0.14, 0.5);
+  [-0.2, 0.2].forEach(x => {
+    const leg = new THREE.Mesh(legG, bodyM);
+    leg.position.set(x, -0.13, 0); drone.add(leg);
+  });
+  scene.add(drone);
+})();
+
+/* 地面投影提示圈（帮助判断正下方位置） */
+const shadowRing = new THREE.Mesh(new THREE.RingGeometry(0.35, 0.45, 24),
+  new THREE.MeshBasicMaterial({ color: 0x1c2733, transparent: true, opacity: 0.35 }));
+shadowRing.rotation.x = -Math.PI / 2;
+scene.add(shadowRing);
+
+/* ---------------- 工具函数 ---------------- */
+function mulberry(seed) { // 可复现随机数
+  return function () {
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+const D2R = Math.PI / 180;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+/* 平滑连续噪声（多正弦叠加，返回 -1..1） */
+function sNoise(t, s) {
+  return (Math.sin(t * 0.9 + s) * 0.5 + Math.sin(t * 2.3 + s * 1.7) * 0.3 + Math.sin(t * 5.1 + s * 2.9) * 0.2);
+}
+
+/* ---------------- 风场模型 ---------------- */
+const windTarget = new THREE.Vector3(); // 复用，避免每帧堆分配
+function updateWind(t, dt) {
+  let spd = state.windSpeed, dirDeg = state.windDirDeg;
+  if (state.natural) {
+    // 阵风：风速在设定值 40%~140% 间起伏，并叠加短周期脉动
+    const gust = 0.9 + 0.5 * sNoise(t * 0.35, 3.1) + 0.12 * sNoise(t * 1.8, 7.7);
+    spd = Math.max(0, spd * gust);
+    // 风向摆动 ±28°
+    dirDeg += 28 * sNoise(t * 0.22, 11.3);
+  }
+  // 风向角=风来自的方向（气象学约定）：来自北(0°) → 吹向 +Z(南)；来自东(90°) → 吹向 -X(西)
+  const rad = dirDeg * D2R;
+  windTarget.set(-Math.sin(rad) * spd, 0, Math.cos(rad) * spd);
+  // 乱流：叠加在目标风上（无状态），避免逐帧累加导致帧率依赖和幅度失控
+  if (state.natural && spd > 0.1) {
+    const k = spd * 0.13;
+    windTarget.x += k * sNoise(t * 3.7, 21);
+    windTarget.z += k * sNoise(t * 3.3, 33);
+  }
+  // 平滑过渡，避免风矢量突跳
+  state.curWind.lerp(windTarget, clamp(dt * 1.5, 0, 1));
+  state.curWindSpd = Math.hypot(state.curWind.x, state.curWind.z);
+  // 风的来向：指向 = -wind，罗盘北=-Z、东=+X → atan2(东分量, 北分量)
+  state.curWindFromDeg = ((Math.atan2(-state.curWind.x, state.curWind.z) / D2R) + 360) % 360;
+}
+
+/* ---------------- 输入：虚拟摇杆 ---------------- */
+function makeStick(baseEl, knobEl) {
+  const st = { x: 0, y: 0, active: false, pid: null, cx: 0, cy: 0, max: 1 };
+  // 缓存中心与半径，避免每帧 getBoundingClientRect 强制布局
+  st.updateRect = () => {
+    const r = baseEl.getBoundingClientRect();
+    st.cx = r.left + r.width / 2; st.cy = r.top + r.height / 2;
+    st.max = r.width / 2 - 12;
+  };
+  st.updateRect();
+  function setFromEvent(e) {
+    let dx = e.clientX - st.cx, dy = e.clientY - st.cy;
+    const len = Math.hypot(dx, dy);
+    if (len > st.max) { dx *= st.max / len; dy *= st.max / len; }
+    st.x = dx / st.max; st.y = -dy / st.max; // y 向上为正
+  }
+  baseEl.addEventListener("pointerdown", e => {
+    st.updateRect(); // 按下时刷新一次，防止布局变化后中心偏移
+    st.active = true; st.pid = e.pointerId;
+    baseEl.setPointerCapture(e.pointerId);
+    setFromEvent(e); e.preventDefault();
+  });
+  baseEl.addEventListener("pointermove", e => {
+    if (st.active && e.pointerId === st.pid) setFromEvent(e);
+  });
+  function release(e) {
+    if (e.pointerId === st.pid) { st.active = false; st.pid = null; st.x = 0; st.y = 0; }
+  }
+  baseEl.addEventListener("pointerup", release);
+  baseEl.addEventListener("pointercancel", release);
+  st.render = () => {
+    knobEl.style.transform = `translate(${st.x * st.max}px, ${-st.y * st.max}px)`;
+  };
+  return st;
+}
+const stickL = makeStick(document.getElementById("stickL"), document.getElementById("knobL"));
+const stickR = makeStick(document.getElementById("stickR"), document.getElementById("knobR"));
+
+/* ---------------- 输入：游戏手柄 ---------------- */
+let gamepadIdx = null;
+window.addEventListener("gamepadconnected", e => {
+  gamepadIdx = e.gamepad.index;
+  const el = document.getElementById("gamepadState");
+  el.textContent = "🎮 已连接: " + e.gamepad.id.slice(0, 22);
+  el.classList.add("on");
+  toast("游戏手柄已连接");
+});
+window.addEventListener("gamepaddisconnected", e => {
+  if (e.gamepad.index === gamepadIdx) {
+    gamepadIdx = null;
+    const el = document.getElementById("gamepadState");
+    el.textContent = "🎮 手柄未连接";
+    el.classList.remove("on");
+  }
+});
+function deadzone(v) { return Math.abs(v) < 0.09 ? 0 : (v - Math.sign(v) * 0.09) / 0.91; }
+
+/* 采集输入 → 按美国手/日本手映射到通道 */
+function pollInput() {
+  if (gamepadIdx !== null) {
+    const gp = navigator.getGamepads()[gamepadIdx];
+    if (gp) {
+      // 无条件同步（含零值），避免摇杆快速回中时残留旧值；触摸操作中的摇杆优先
+      if (!stickL.active) {
+        stickL.x = deadzone(gp.axes[0] || 0);
+        stickL.y = -deadzone(gp.axes[1] || 0);
+      }
+      if (!stickR.active) {
+        stickR.x = deadzone(gp.axes[2] || 0);
+        stickR.y = -deadzone(gp.axes[3] || 0);
+      }
+      // 手柄任意按钮 = 重置（坠机后方便重飞）
+      if (state.crashed && gp.buttons.some(b => b.pressed)) resetDrone();
+    }
+  }
+  // 左右杆值（y 向上为正）
+  const lx = stickL.x, ly = stickL.y, rx = stickR.x, ry = stickR.y;
+  const inp = state.input;
+  if (state.mode === 2) {          // 美国手：左=油门/偏航  右=俯仰/横滚
+    inp.throttle = ly; inp.yaw = lx; inp.pitch = ry; inp.roll = rx;
+  } else {                         // 日本手：左=俯仰/偏航  右=油门/横滚
+    inp.pitch = ly; inp.yaw = lx; inp.throttle = ry; inp.roll = rx;
+  }
+}
+
+/* ---------------- 飞行物理 ---------------- */
+function stepPhysics(dt) {
+  const inp = state.input;
+  if (state.crashed) return;
+
+  // 偏航
+  if (!state.landed) state.yaw -= inp.yaw * CFG.maxYawRate * D2R * dt;
+
+  // 目标倾角（俯仰前推=机头低头向前）
+  const maxT = CFG.maxTiltDeg * D2R;
+  const targetTX = inp.pitch * maxT;
+  const targetTZ = inp.roll * maxT;
+  const k = clamp(CFG.tiltLag * dt, 0, 1);
+  state.tiltX = lerp(state.tiltX, state.landed ? 0 : targetTX, k);
+  state.tiltZ = lerp(state.tiltZ, state.landed ? 0 : targetTZ, k);
+
+  // 水平加速度：倾角产生推力分量（机体系 → 世界系）
+  const aFwd = Math.tan(state.tiltX) * CFG.gravity;   // 机头方向
+  const aRight = Math.tan(state.tiltZ) * CFG.gravity; // 机体右方
+  const sy = Math.sin(state.yaw), cy = Math.cos(state.yaw);
+  // 机头朝 -Z（yaw=0 时），前进 = 世界 -Z 方向
+  let ax = aFwd * -sy + aRight * cy;
+  let az = aFwd * -cy + aRight * -sy;
+
+  // 空气阻力：相对空气速度（自然包含风的推动作用）
+  const relX = state.vel.x - state.curWind.x;
+  const relZ = state.vel.z - state.curWind.z;
+  ax -= CFG.dragC * relX + CFG.windDragC * relX * Math.abs(relX) * 0.06;
+  az -= CFG.dragC * relZ + CFG.windDragC * relZ * Math.abs(relZ) * 0.06;
+
+  if (!state.landed) {
+    state.vel.x += ax * dt;
+    state.vel.z += az * dt;
+    // 垂直：油门杆 → 目标垂直速度（定高辅助）
+    const targetVy = inp.throttle >= 0 ? inp.throttle * CFG.maxClimb : inp.throttle * CFG.maxDescend;
+    state.vel.y = lerp(state.vel.y, targetVy, clamp(CFG.vertLag * dt, 0, 1));
+    // 自然风垂直乱流
+    if (state.natural) state.vel.y += state.curWindSpd * 0.05 * sNoise(perf() * 2.6, 55) * dt * 6;
+  } else {
+    // 地面待命：油门上推超过 25% 起飞
+    state.vel.set(0, 0, 0);
+    if (inp.throttle > 0.25) {
+      state.landed = false;
+      state.vel.y = 1.2;
+      toast("起飞！");
+    }
+  }
+
+  state.pos.addScaledVector(state.vel, dt);
+
+  // 触地判定
+  if (!state.landed && state.pos.y <= CFG.droneRestY) {
+    state.pos.y = CFG.droneRestY;
+    const vDown = -state.vel.y;
+    const hSpd = Math.hypot(state.vel.x, state.vel.z);
+    if (vDown > CFG.crashVspeed || hSpd > CFG.crashHspeed) {
+      state.crashed = true;
+      document.getElementById("banner").style.display = "block";
+    } else if (state.input.throttle < 0.05) {
+      state.landed = true;
+      state.vel.set(0, 0, 0);
+      toast("已降落");
+    } else {
+      state.vel.y = 0;
+    }
+  }
+  state.pos.y = clamp(state.pos.y, CFG.droneRestY, 120);
+  state.pos.x = clamp(state.pos.x, -240, 240);
+  state.pos.z = clamp(state.pos.z, -240, 240);
+}
+
+function resetDrone() {
+  state.pos.set(0, CFG.droneRestY, 0);
+  state.vel.set(0, 0, 0);
+  state.yaw = 0; state.tiltX = 0; state.tiltZ = 0;
+  state.landed = true; state.crashed = false;
+  document.getElementById("banner").style.display = "none";
+}
+
+/* ---------------- 相机跟随 ---------------- */
+const camTarget = new THREE.Vector3();
+const camGoal = new THREE.Vector3(), lookGoal = new THREE.Vector3(); // 复用，避免每帧堆分配
+function updateCamera(dt) {
+  const sy = Math.sin(state.yaw), cy = Math.cos(state.yaw);
+  // 相机位于机尾后上方（机头 -Z 方向的反向）
+  camGoal.set(
+    state.pos.x + sy * CFG.camDist,
+    state.pos.y + CFG.camHeight,
+    state.pos.z + cy * CFG.camDist
+  );
+  const k = clamp(CFG.camLag * dt, 0, 1);
+  camera.position.lerp(camGoal, k);
+  if (camera.position.y < 0.6) camera.position.y = 0.6;
+  lookGoal.set(state.pos.x, state.pos.y + 0.4, state.pos.z);
+  camTarget.lerp(lookGoal, clamp(dt * 6, 0, 1));
+  camera.lookAt(camTarget);
+}
+
+/* ---------------- HUD ---------------- */
+const $ = id => document.getElementById(id);
+const DIRS = ["北", "东北", "东", "东南", "南", "西南", "西", "西北"];
+function dirName(deg) { return DIRS[Math.round(deg / 45) % 8]; }
+let hudTick = 0;
+function updateHUD(dt) {
+  hudTick += dt;
+  if (hudTick < 0.1) return;
+  hudTick = 0;
+  $("hAlt").textContent = Math.max(0, state.pos.y - CFG.droneRestY).toFixed(1) + " m";
+  $("hSpd").textContent = Math.hypot(state.vel.x, state.vel.z).toFixed(1) + " m/s";
+  $("hVs").textContent = (state.vel.y >= 0 ? "+" : "") + state.vel.y.toFixed(1) + " m/s";
+  const hdg = ((-state.yaw / D2R) % 360 + 360) % 360;
+  $("hHdg").textContent = Math.round(hdg) + "° " + dirName(hdg);
+  $("hWind").textContent = state.curWindSpd.toFixed(1) + " m/s " +
+    (state.curWindSpd > 0.2 ? dirName(state.curWindFromDeg) + "风" : "");
+  // 箭头指向风的去向（风从 from 吹向 from+180）
+  $("windArrow").style.transform = `rotate(${state.curWindFromDeg + 180 - 90}deg)`;
+}
+
+let toastTimer = null;
+function toast(msg) {
+  const el = $("toast");
+  el.textContent = msg;
+  el.style.opacity = 1;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.style.opacity = 0, 1600);
+}
+
+/* ---------------- UI 事件 ---------------- */
+$("panelHead").addEventListener("click", () => {
+  $("panel").classList.toggle("collapsed");
+  $("panelFold").textContent = $("panel").classList.contains("collapsed") ? "▸" : "▾";
+});
+$("modeSeg").addEventListener("click", e => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  state.mode = +btn.dataset.mode;
+  document.querySelectorAll("#modeSeg button").forEach(b => b.classList.toggle("on", b === btn));
+  updateStickTags();
+  toast(state.mode === 2 ? "已切换为美国手 Mode 2" : "已切换为日本手 Mode 1");
+});
+function updateStickTags() {
+  if (state.mode === 2) {
+    $("tagL").textContent = "油门 / 偏航";
+    $("tagR").textContent = "俯仰 / 横滚";
+  } else {
+    $("tagL").textContent = "俯仰 / 偏航";
+    $("tagR").textContent = "油门 / 横滚";
+  }
+}
+updateStickTags();
+
+$("windSpd").addEventListener("input", e => {
+  state.windSpeed = +e.target.value;
+  $("windSpdVal").textContent = state.windSpeed.toFixed(1) + " m/s";
+});
+$("windDir").addEventListener("input", e => {
+  state.windDirDeg = +e.target.value;
+  $("windDirVal").textContent = dirName(state.windDirDeg) + " " + state.windDirDeg + "°";
+});
+$("natSwitch").addEventListener("click", () => {
+  state.natural = !state.natural;
+  $("natSwitch").classList.toggle("on", state.natural);
+  toast(state.natural ? "自然风模式：阵风与乱流已开启" : "恒定风模式");
+});
+$("resetBtn").addEventListener("click", resetDrone);
+window.addEventListener("keydown", e => {
+  if (e.key === "r" || e.key === "R") resetDrone();
+});
+window.addEventListener("resize", () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  stickL.updateRect(); // 布局变化后刷新摇杆中心与半径缓存
+  stickR.updateRect();
+});
+
+/* ---------------- 主循环 ---------------- */
+const perf = () => performance.now() / 1000;
+let lastT = perf();
+function loop() {
+  requestAnimationFrame(loop);
+  const now = perf();
+  const dt = Math.min(now - lastT, 0.05);
+  lastT = now;
+
+  pollInput();
+  updateWind(now, dt);
+  stepPhysics(dt);
+
+  // 同步无人机姿态
+  drone.position.copy(state.pos);
+  drone.rotation.set(0, 0, 0);
+  drone.rotateY(state.yaw);
+  drone.rotateX(-state.tiltX);   // 前推杆 → 机头向前低头（-Z 方向）
+  drone.rotateZ(-state.tiltZ);
+  // 螺旋桨转动
+  const spinRate = state.landed ? 2 : 55 + state.input.throttle * 20;
+  state.rotorSpin += spinRate * dt;
+  rotors.forEach((r, i) => r.rotation.y = state.rotorSpin * (i % 2 ? 1 : -1));
+  // 地面投影圈
+  shadowRing.position.set(state.pos.x, 0.04, state.pos.z);
+  const sc = 1 + state.pos.y * 0.06;
+  shadowRing.scale.setScalar(sc);
+  shadowRing.material.opacity = clamp(0.4 - state.pos.y * 0.004, 0.08, 0.4);
+
+  // 风向旗随风摆动
+  const flagAng = Math.atan2(state.curWind.x, state.curWind.z) + Math.PI / 2;
+  const flap = state.natural ? 0.12 * sNoise(now * 6, 9) : 0.05 * Math.sin(now * 4);
+  flags.forEach((f, i) => {
+    f.rotation.y = lerp(f.rotation.y, flagAng + flap * (i % 2 ? 1 : -1), clamp(dt * 4, 0, 1));
+    const droop = clamp(1 - state.curWindSpd / 6, 0, 0.9);
+    f.children[0].rotation.z = -droop * 0.9;
+  });
+  // 练习环缓慢自转提示
+  rings.forEach((r, i) => r.rotation.z = now * 0.4 + i);
+
+  updateCamera(dt);
+  stickL.render();
+  stickR.render();
+  updateHUD(dt);
+  renderer.render(scene, camera);
+}
+loop();
+</script>
+</body>
+</html>

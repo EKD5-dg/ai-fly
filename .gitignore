@@ -1,0 +1,4 @@
+dist/
+*.png
+node_modules/
+.wrangler/
